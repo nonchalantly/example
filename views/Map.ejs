@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Map Page</title>
+    <script type="text/javascript"
+        src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=2j5bpft4t3&submodules=geocoder"></script>
+    <link rel="stylesheet" href="/css/Map.css">
+    <script src="/js/Map.js" defer></script>
+</head>
+
+<body>
+    <button class="toggle-button" id="toggleButton" onclick="toggleSidebar()">☰</button>
+
+    <div class="sidebar" id="sidebar" style="display: none;">
+        <button class="close-button" onclick="toggleSidebar()">×</button>
+        <h2>기능</h2>
+        <div id="functionContainer">
+            <ul>
+                <li onclick="showTravelInfo()">여행 정보 등록</li>
+                <li onclick="showUserInfo()">사용자 정보</li>
+            </ul>
+        </div>
+        <div class="search-container" id="searchContainer" style="display: none;">
+            <button onclick="goBack()" style="margin-bottom: 10px;">뒤로가기</button> <!-- 위치 변경 -->
+            <input type="text" id="searchInput" placeholder="검색어를 입력하세요...">
+            <button onclick="searchLocations()">검색</button>
+            <div id="searchResults" class="results-container"></div>
+        </div>
+        <button class="logout-button" onclick="logout()" style="margin-top: auto;">🚪 로그아웃</button> <!-- 맨 아래로 이동 -->
+    </div>
+
+    <div id="map" style="width:100%;height:100%;"></div>
+
+    <div class="chat-icon" id="chatIcon" onclick="toggleChatBox()">💬</div>
+
+    <div class="chat-box" id="chatBox">
+        <div class="chat-box-header">
+            Chat
+            <button onclick="toggleChatBox()"
+                style="background: none; border: none; color: white; font-size: 20px;">×</button>
+        </div>
+        <div class="chat-box-content" id="chatContent"></div>
+        <div class="chat-box-footer">
+            <input type="text" id="chatInput" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let map;
+        let markers = [];
+
+        function initMap() {
+            map = new naver.maps.Map('map', {
+                center: new naver.maps.LatLng(37.3595704, 127.105399),
+                zoom: 10
+            });
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleButton = document.getElementById('toggleButton');
+
+            if (sidebar.style.display === "none") {
+                sidebar.style.display = "block";
+                setTimeout(() => {
+                    sidebar.classList.add('active');
+                }, 10);
+                toggleButton.classList.add('hidden');
+            } else {
+                sidebar.classList.remove('active');
+                setTimeout(() => {
+                    sidebar.style.display = "none";
+                }, 300);
+                toggleButton.classList.remove('hidden');
+            }
+        }
+
+        function showTravelInfo() {
+            // 모든 요소 비활성화
+            document.getElementById('functionContainer').style.display = 'none';
+            // 검색 기능 활성화
+            document.getElementById('searchContainer').style.display = 'block';
+        }
+
+        function showUserInfo() {
+            const userInfoBox = document.getElementById('userInfoBox');
+            const userInfo = document.getElementById('userInfo');
+
+            // 사용자 정보 가져오기 (예시로 하드코딩)
+            const username = "사용자 아이디"; // 실제 데이터로 대체
+            const password = "비밀번호"; // 실제 데이터로 대체
+
+            userInfo.textContent = `아이디: ${username}, 비밀번호: ${password}`;
+            userInfoBox.style.display = "block"; // 사용자 정보 박스 보이기
+        }
+
+        function goBack() {
+            // 검색 기능 숨기기
+            document.getElementById('searchContainer').style.display = 'none';
+            // 기능 컨테이너 다시 활성화
+            document.getElementById('functionContainer').style.display = 'block';
+        }
+
+        function logout() {
+            // 로그아웃 처리 (예: 세션 종료 및 초기 화면으로 이동)
+            window.location.href = '/'; // 초기 화면으로 돌아가기
+        }
+
+        function toggleChatBox() {
+            const chatBox = document.getElementById('chatBox');
+            const chatIcon = document.getElementById('chatIcon');
+
+            if (chatBox.style.display === "none") {
+                chatBox.style.display = "flex";
+                chatIcon.style.display = "none";
+            } else {
+                chatBox.style.display = "none";
+                chatIcon.style.display = "flex";
+            }
+        }
+
+        function sendMessage() {
+            const chatInput = document.getElementById('chatInput');
+            const chatContent = document.getElementById('chatContent');
+            const message = chatInput.value;
+
+            if (message.trim() !== "") {
+                const newMessage = document.createElement('div');
+                newMessage.textContent = message;
+                chatContent.appendChild(newMessage);
+                chatInput.value = "";
+            }
+        }
+
+        async function fetchNaverData(query) {
+            console.log(`Searching for: ${query}`); // 요청 직전 로그 추가
+            try {
+                const response = await fetch(`/search?query=${encodeURIComponent(query)}`);
+                console.log(`Response status: ${response.status}`); // 응답 상태 로그
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log('Data received:', data); // 반환된 데이터 로그 출력
+                return data;
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
+        }
+
+        async function searchLocations() {
+            const query = document.getElementById('searchInput').value;
+            const results = await fetchNaverData(query);
+
+            const resultsContainer = document.getElementById('searchResults');
+            resultsContainer.innerHTML = '';
+
+            if (results.items) {
+                results.items.forEach(item => {
+                    const resultDiv = document.createElement('div');
+                    resultDiv.innerHTML = `
+                <strong>${item.title}</strong><br>
+                <span>${item.description || ''}</span><br>
+                <span>${item.address || ''}</span><br>
+                <button onclick="goToLocation(${item.mapx}, ${item.mapy})">위치로 가기</button>
+            `;
+                    resultsContainer.appendChild(resultDiv);
+                });
+            }
+        }
+        function goToLocation(mapx, mapy) {
+            // 문자열을 숫자로 변환
+            const longitude = parseFloat(mapx) / 10000000; // 10,000,000으로 나누기
+            const latitude = parseFloat(mapy) / 10000000; // 10,000,000으로 나누기
+
+            const location = new naver.maps.LatLng(latitude, longitude); // 위도, 경도 순서
+
+            // 기존 마커 제거
+            markers.forEach(marker => {
+                marker.setMap(null); // 지도에서 마커 제거
+            });
+            markers = []; // 마커 배열 초기화
+
+            // 새로운 마커 추가
+            const marker = new naver.maps.Marker({
+                position: location,
+                map: map,
+                title: "선택한 위치"
+            });
+
+            markers.push(marker); // 새로운 마커 배열에 추가
+
+            // 지도 이동
+            map.setCenter(location);
+            map.setZoom(16); // 적절한 줌 레벨로 설정
+        }
+        function addMarker(item) {
+            console.log("Adding marker for item:", item);
+
+            // 문자열을 숫자로 변환
+            const longitude = parseFloat(item.mapx) / 10000000; // 10,000,000으로 나누기
+            const latitude = parseFloat(item.mapy) / 10000000; // 10,000,000으로 나누기
+
+            const location = new naver.maps.LatLng(latitude, longitude); // 위도, 경도 순서
+
+            // 기존 마커 제거
+            markers.forEach(marker => {
+                marker.setMap(null); // 지도에서 마커 제거
+            });
+            markers = []; // 마커 배열 초기화
+
+            // 새로운 마커 추가
+            const marker = new naver.maps.Marker({
+                position: location,
+                map: map,
+                title: item.title
+            });
+
+            markers.push(marker); // 새로운 마커 배열에 추가
+
+            // 지도 이동
+            map.setCenter(location);
+            map.setZoom(16); // 적절한 줌 레벨로 설정
+        }
+
+
+        document.addEventListener('DOMContentLoaded', initMap);
+    </script>
+</body>
+
+</html>
